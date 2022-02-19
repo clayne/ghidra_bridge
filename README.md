@@ -10,6 +10,8 @@ If you like this, you might also be interested in the equivalents for other reve
 * [jfx_bridge_ida](https://github.com/justfoxing/jfx_bridge_ida) for IDA Pro [![jfx_bridge_ida PyPi version](https://img.shields.io/pypi/v/jfx_bridge_ida.svg)](https://pypi.org/project/jfx-bridge-ida/)
 * [jfx_bridge_jeb](https://github.com/justfoxing/jfx_bridge_jeb) for JEB Decompiler [![jfx_bridge_jeb PyPi version](https://img.shields.io/pypi/v/jfx_bridge_jeb.svg)](https://pypi.org/project/jfx-bridge-jeb/)
 
+If you _really_ like this, feel free to buy me a coffee: https://ko-fi.com/justfoxing
+
 Table of contents
 ======================
 * [How to use for Ghidra](#how-to-use-for-ghidra)
