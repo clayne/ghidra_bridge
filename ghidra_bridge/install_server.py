@@ -11,7 +11,9 @@ SERVER_DIR = "server"
 def do_install(install_dir):
     # list the files from jfx_bridge
     jfx_bridge_files = [
-        f for f in pkg_resources.resource_listdir(JFX_BRIDGE, ".") if f != "__pycache__"
+        f
+        for f in pkg_resources.resource_listdir(JFX_BRIDGE, ".")
+        if f != "__pycache__" and not f.startswith("test_")
     ]
 
     # create a jfx_bridge directory in the install dir
