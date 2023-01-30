@@ -4,6 +4,8 @@ import time
 import ghidra_bridge
 from ghidra_bridge.server import ghidra_bridge_port
 
+import jfx_bridge
+import pytest
 
 class TestGhidraBridge(unittest.TestCase):
     """ Assumes there's a ghidra bridge server running at DEFAULT_SERVER_PORT """
@@ -198,3 +200,25 @@ class TestGhidraBridge(unittest.TestCase):
         test = array.array("b", b"\0" * 10)
 
         self.assertIsNotNone(test)
+        
+    @pytest.mark.timeout(10)  
+    def test_java_exceptions_exec(self):
+        """ Make sure we don't hang if we throw a java based exception in an exec """
+        b = ghidra_bridge.GhidraBridge(namespace=globals())
+        jerror = b.remote_import("java.lang.Error")
+        with self.assertRaises(jfx_bridge.bridge.BridgeException):
+            b.remote_exec("raise java.lang.Error('foo')")
+        
+    @pytest.mark.timeout(10)  
+    def test_java_exceptions_call(self):       
+        """ Make sure we don't hang if we throw a java based exception in a call """
+        b = ghidra_bridge.GhidraBridge(namespace=globals())
+        jint = b.remote_import("java.lang.Integer")
+        with self.assertRaises(jfx_bridge.bridge.BridgeException):
+            jint.divideUnsigned(1,0)
+            
+    def test_jarray(self):
+        """ Make sure we can call the jarray functions, so we can pass byte arrays into java calls """
+        b = ghidra_bridge.GhidraBridge(namespace=globals())
+        jarray = b.remote_import("jarray")
+        z = jarray.zeros(10, 'b')
