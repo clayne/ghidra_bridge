@@ -1,0 +1,104 @@
+name: Test and build
+on: [push]
+jobs:
+  test: 
+    runs-on: ubuntu-latest
+    
+    env:
+      GHIDRA_PATH: ~/.ghidra 
+      GHIDRA_VERSION: "10.2.2" # TODO automatically get the latest version?
+
+    steps:    
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Set up python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+          
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          
+      - name: Cache Ghidra build
+        id: cache-ghidra-builds
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.GHIDRA_PATH }}
+          key: ghidra-${{ env.GHIDRA_VERSION }}
+
+      - name: Download Ghidra build
+        if: steps.cache-ghidra-builds.outputs.cache-hit != 'true'
+        run: | 
+          mkdir -p ${{ env.GHIDRA_PATH }}
+          # HACK: running this curl/jq first seems to avoid the second one failing - don't know why, pls fix.
+          curl --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' https://api.github.com/repos/nationalsecurityagency/ghidra/releases/tags/Ghidra_${{ env.GHIDRA_VERSION }}_build | jq .
+          URL=$(curl https://api.github.com/repos/nationalsecurityagency/ghidra/releases/tags/Ghidra_${{ env.GHIDRA_VERSION }}_build | jq -r '.assets[]| select(.name | test("ghidra_${{ env.GHIDRA_VERSION }}.*.zip"))|.browser_download_url')
+          echo "Downloading ${{ env.GHIDRA_VERSION }} from ${URL}"
+          wget -nv -O /tmp/ghidra_${{ env.GHIDRA_VERSION }}.zip $URL 
+          unzip -q -d ${{ env.GHIDRA_PATH }} /tmp/ghidra_${{ env.GHIDRA_VERSION }}.zip
+
+      - name: Spawn ghidra bridge server and run tests with pytest (3.7+)
+        run: |
+            python3 -m pip install jfx-bridge pytest pytest-timeout
+            mkdir test-reports
+            touch test-reports/script.err
+            
+            python3 -m ghidra_bridge.install_server /tmp/ghidra_bridge/test_server
+                        
+            ${{ env.GHIDRA_PATH }}/ghidra_${{ env.GHIDRA_VERSION }}_PUBLIC/support/analyzeHeadless /tmp TestProject -import /bin/bash -noanalysis -scriptPath /tmp/ghidra_bridge/test_server -preScript ghidra_bridge_server.py >test-reports/script.log 2> test-reports/script.err & # Run the ghidra_bridge_server in a headless ghidra - we use non-background server, otherwise the script would exit before we could test
+            ( tail -f test-reports/script.err & ) | grep -q "_bridge.bridge:serving!" # pause until we see the ghidra_bridge_server start logging messages
+            
+            python3 -c "import ghidra_bridge; b = ghidra_bridge.GhidraBridge(namespace=globals()); print(getState().getCurrentAddress())" # run a quick test for ghidra_bridge - we do this before the unittests, because the last unittest shuts down the bridge
+            
+            python3 -m pytest --junit-xml=test-reports/test-pytest.xml ghidra_bridge/test_ghidra_bridge.py       
+            
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-reports
+          path: test-reports/
+          
+  build: 
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+        with:
+            fetch-depth: '0' # make sure we get tags so git describe will work
+
+      - name: Set up python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+          
+      - name: Build wheel
+        run: |
+            python3 -m pip install --user --upgrade wheel setuptools # make sure we've got the latest version, to support using Markdown
+            python3 setup.py sdist bdist_wheel --universal
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: dist/
+      
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+            fail_on_unmatched_files: true
+            files:
+                dist/*
+          
+      - name: Publish to PyPi
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verbose: true
